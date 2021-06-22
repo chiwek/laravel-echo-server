@@ -22,8 +22,6 @@
     "prepublish": "npm run build"
   },
   "dependencies": {
-    "@socket.io/sticky": "^1.0.0",
-    "cluster": "^0.7.7",
     "colors": "^1.4.0",
     "dotenv": "^8.2.0",
     "express": "^4.17.1",
