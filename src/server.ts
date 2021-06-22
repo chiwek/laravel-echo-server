@@ -1,3 +1,4 @@
+const cluster = require("cluster");
 var fs = require('fs');
 var http = require('http');
 var https = require('https');
@@ -5,6 +6,10 @@ var express = require('express');
 var url = require('url');
 var io = require('socket.io');
 import { Log } from './log';
+const redisAdapter = require("socket.io-redis");
+const { setupMaster, setupWorker } = require("@socket.io/sticky");
+const totalCPUs = require("os").cpus().length;
+
 
 export class Server {
     /**
@@ -98,25 +103,67 @@ export class Server {
      * @return {any}
      */
     httpServer(secure: boolean) {
-        this.express = express();
-        this.express.use((req, res, next) => {
-            for (var header in this.options.headers) {
-                res.setHeader(header, this.options.headers[header]);
-            }
-            next();
-        });
 
-        if (secure) {
-            var httpServer = https.createServer(this.options, this.express);
+        if (cluster.isMaster) {
+            console.log(`Number of CPUs is ${totalCPUs}`);
+            console.log(`Master ${process.pid} is running`);
+
+            this.express = express();
+            this.express.use((req, res, next) => {
+                for (var header in this.options.headers) {
+                    res.setHeader(header, this.options.headers[header]);
+                }
+                next();
+            });
+
+            if (secure) {
+                var httpServer = https.createServer(this.options, this.express);
+            } else {
+                var httpServer = http.createServer(this.express);
+            }
+
+            setupMaster(httpServer, {
+                loadBalancingMethod: "least-connection", // either "random", "round-robin" or "least-connection"
+            });
+            httpServer.listen(this.getPort(), this.options.host);
+
+            // Fork workers.
+            for (let i = 0; i < totalCPUs; i++) {
+                cluster.fork();
+            }
+
+            cluster.on('exit', (worker, code, signal) => {
+                console.log(`worker ${worker.process.pid} died`);
+                console.log("Let's fork another worker!");
+                cluster.fork();
+            });
+
         } else {
-            var httpServer = http.createServer(this.express);
+            this.express = express();
+            this.express.use((req, res, next) => {
+                for (var header in this.options.headers) {
+                    res.setHeader(header, this.options.headers[header]);
+                }
+                next();
+            });
+
+            if (secure) {
+                var httpServer = https.createServer(this.options, this.express);
+            } else {
+                var httpServer = http.createServer(this.express);
+            }
+
+            httpServer.listen(this.getPort(), this.options.host);
+
+            this.authorizeRequests();
+
+            this.io = io(httpServer, this.options.socketio);
+            this.io.adapter(redisAdapter({ host: "localhost", port: 6379 }));
+            setupWorker(this.io);
+            return this.io;
         }
 
-        httpServer.listen(this.getPort(), this.options.host);
 
-        this.authorizeRequests();
-
-        return this.io = io(httpServer, this.options.socketio);
     }
 
     /**
