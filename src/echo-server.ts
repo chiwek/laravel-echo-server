@@ -183,7 +183,7 @@ export class EchoServer {
      * Broadcast to others on channel.
      */
     toOthers(socket: any, channel: string, message: any): boolean {
-        socket.broadcast.to(channel)
+        socket.broadcast.to(channel).local
             .emit(message.event, channel, message.data);
 
         return true
@@ -193,7 +193,7 @@ export class EchoServer {
      * Broadcast to all members on channel.
      */
     toAll(channel: string, message: any): boolean {
-        this.server.io.to(channel)
+        this.server.io.to(channel).local
             .emit(message.event, channel, message.data);
 
         return true

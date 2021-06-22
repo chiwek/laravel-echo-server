@@ -5,7 +5,8 @@ var express = require('express');
 var url = require('url');
 var io = require('socket.io');
 import { Log } from './log';
-const redisAdapter = require("socket.io-redis");
+var Redis = require('ioredis');
+var adapter = require('socket.io-redis');
 
 
 export class Server {
@@ -38,6 +39,14 @@ export class Server {
             this.serverProtocol().then(() => {
                 let host = this.options.host || 'localhost';
                 Log.success(`Running at ${host} on port ${this.getPort()}`);
+
+                if(this.options.database == "redis")
+                {
+                    var pubClient = new Redis(this.options.databaseConfig.redis);
+                    var subClient = new Redis(this.options.databaseConfig.redis);
+
+                    this.io.adapter(adapter({ key:'adapter', pubClient: pubClient , subClient: subClient }));
+                }
 
                 resolve(this.io);
             }, error => reject(error));
@@ -120,7 +129,6 @@ export class Server {
         this.authorizeRequests();
 
         this.io = io(httpServer, this.options.socketio);
-        this.io.adapter(redisAdapter({ host: "localhost", port: 6379 }));
         return this.io;
 
 
